@@ -58,8 +58,26 @@ class RepublishHandler(EventHandler):
 
     def do_event(self, the_client: Client, sub_id, evt: Event):
         try:
-            content = json.loads(evt.content)
-            asyncio.create_task(self.republish(content['events'],evt.get_tags_value('relays')))
+            if not evt.content:
+                # probably just an advertise event
+                pass
+            else:
+                # get the pub_k of the sender so we can decrypt
+                from_key = evt.get_tags_value('p')
+                if from_key:
+                    from_key = from_key[0]
+                if from_key and Keys.is_hex_key(from_key):
+                    # decrypt and relay
+                    decrypted = evt.decrypted_content(priv_key=self._keys.private_key_hex(),
+                                                      pub_key=evt.pub_key)
+                    content = json.loads(decrypted)
+                    asyncio.create_task(self.republish(content['events'],
+                                                       evt.get_tags_value('relays')))
+
+                else:
+                    # we couldn't get pub key so can't do anything with this
+                    logging.info('RepublishHandler::do_event - unable to route event: %s, bad or missing pub_k' % evt)
+
         except JSONDecodeError as je:
             print(je)
         except Exception as e:
@@ -85,7 +103,11 @@ class RepublishHandler(EventHandler):
                     if last_add == 0:
                         last_add = self._advertise_interval
                         add_event = Event(kind=Event.KIND_REPUBLISH,
-                                          pub_key=self._keys.public_key_hex())
+                                          pub_key=self._keys.public_key_hex(),
+                                          content='',
+                                          tags=[
+                                              ['p', self._keys.public_key_hex()]
+                                          ])
                         add_event.sign(self._keys.private_key_hex())
                         cp.publish(add_event)
                     elif self._advertise_at == ServiceAdvertise.INTERVAL:
@@ -101,7 +123,8 @@ def get_args():
 async def main(args):
     # options this are defaults, TODO: from cmd line and toml file
     # relays to output to
-    relays = 'ws://localhost:8081'.split(',')
+    # relays = 'ws://localhost:8081'.split(',')
+    relays = 'wss://nostr-pub.wellorder.net'
     # keys for the relayer, we'll pick up messages to this pub_k only
     my_keys = Keys()
     # my_keys = Keys('b1545404b863e0c9de9670496d216154b76b8ad8e3aa0a4639a76a478dfce9a4')

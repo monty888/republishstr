@@ -35,7 +35,9 @@ class RouterService:
         # relayers handed into, this will be selected from first and only if there are not
         # enough will we use peers we descovered
         # in future we may want track so info on peers to better pick but for now just keep the pkeys
-        self._preferred_peers = [c_peer for c_peer in preferred_peers]
+        self._preferred_peers = []
+        if preferred_peers:
+            self._preferred_peers = [c_peer for c_peer in preferred_peers]
 
         # peers discovered by seeing messages posted by them
         self._discovered_peers = []
@@ -63,7 +65,6 @@ class RouterService:
             preferrerd_peers will always be selected ahead of discovered peers
             in future we might want to take other metrics into account, for example last seen for discovered peers
         """
-        ret = []
         if min_hops is None:
             min_hops = self._min_hops
         print('attempting to create a route with %s hops' % min_hops)
@@ -83,11 +84,10 @@ class RouterService:
             random.shuffle(select_from)
             ret = (ret + select_from)[:min_hops]
 
-
-
         if len(ret) < min_hops:
             raise RouteException('ServiceIndexer::get_route - unable to create route of %s hops with available peers' % min_hops)
 
+        logging.info('RouterService::get_route - created route %s' % ret)
         return ret
 
     def _get_wrapped_event(self, evts, use_keys, hop_key) -> Event:
@@ -102,6 +102,9 @@ class RouterService:
                         ['relays'] + self._relays
                     ]
                     )
+
+        ret.content = ret.encrypt_content(priv_key=use_keys.private_key_hex(),
+                                          pub_key=hop_key)
         ret.sign(use_keys.private_key_hex())
         return ret
 
@@ -122,28 +125,26 @@ class RouterService:
 
             if ret is None:
                 # the very inner event (and only event if just 1 hop)
-                # this is the final one to be unrapped before revealing the actual event the user wanted posted
+                # this is the final one to be unwrapped before revealing the actual event the user wanted posted
                 ret = self._get_wrapped_event(evts=evts,
                                               use_keys=use_keys,
                                               hop_key=c_hop)
-
             else:
                 # any other hop is just a wrap around the first event and will only contain single events
                 ret = self._get_wrapped_event(evts=[ret],
                                               use_keys=use_keys,
                                               hop_key=c_hop)
-
-        print(ret)
         return ret
 
     def do_event(self, the_client: Client, sub_id, evt: Event):
-        peer_key = evt.pub_key
-        if peer_key not in set(self._preferred_peers) and \
-                peer_key not in set(self._discovered_peers):
-            self._discovered_peers.append(peer_key)
+        peer_key = evt.get_tags_value('p')
+        if peer_key:
+            peer_key = peer_key[0]
+            if peer_key not in set(self._preferred_peers) and \
+                    peer_key not in set(self._discovered_peers):
+                self._discovered_peers.append(peer_key)
 
-            print('discovered new peer - %s' % peer_key)
-
+                print('discovered new peer - %s' % peer_key)
 
     async def start(self):
         def on_connect(the_client: Client):
@@ -170,9 +171,10 @@ class RouterService:
 
 
 async def main(args):
-    relay = 'ws://localhost:8081'
+    # relay = 'ws://localhost:8081'
+    relay = 'wss://nostr-pub.wellorder.net'
     my_router = RouterService(relays=relay,
-                              preferred_peers=['e50bf090e2bde490aae6f77fd6b298250a18dd13725e8c4e28201516bf3b3df5'],
+                              preferred_peers=None,
                               min_hops=2,
                               enable_discovery=True)
 
