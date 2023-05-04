@@ -123,8 +123,8 @@ def get_args():
 async def main(args):
     # options this are defaults, TODO: from cmd line and toml file
     # relays to output to
-    # relays = 'ws://localhost:8081'.split(',')
-    relays = 'wss://nostr-pub.wellorder.net'
+    relays = 'ws://localhost:8081'.split(',')
+    # relays = 'wss://nostr-pub.wellorder.net'
     # keys for the relayer, we'll pick up messages to this pub_k only
     my_keys = Keys()
     # my_keys = Keys('b1545404b863e0c9de9670496d216154b76b8ad8e3aa0a4639a76a478dfce9a4')
